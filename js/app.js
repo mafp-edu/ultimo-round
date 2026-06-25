@@ -1,10 +1,9 @@
 // ===========================================================================
 //  NAVEGANDO SISTEMAS: ÚLTIMO ROUND — Lógica del juego
 //  Firebase Realtime Database · sin frameworks · GitHub Pages
-//  - 5 vidas para el curso (0 = fin)
-//  - 3 comodines que activa el docente: MAF (pista), 50-50, MG (respuesta)
-//  - Timer 90 s con pausa/reanudar (solo docente); al llegar a 0 cierra y revela
-//  - Marcador individual: puntaje por estudiante, top 3 al final
+//  Docente: lobby (verifica conectados + instrucciones + Comenzar) → preguntas
+//  Timer 90 s pausable (solo docente) · 5 vidas · 3 comodines
+//  Marcador individual · top 3 al final · música de fondo en el proyector
 // ===========================================================================
 (function () {
   "use strict";
@@ -18,6 +17,7 @@
   const TIEMPO = window.TIEMPO_PREGUNTA || 90;
   const UMBRAL = window.UMBRAL || 0.5;
   const VIDAS0 = window.VIDAS_INICIO || 5;
+  const MUSICA = window.MUSICA_URL || "assets/musica.mp3";
 
   const $ = (s) => document.querySelector(s);
   const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
@@ -44,6 +44,23 @@
   }
 
   // =========================================================================
+  //  MÚSICA DE FONDO (solo proyector)
+  // =========================================================================
+  let audio = null, musicaOn = false;
+  function crearAudio() {
+    audio = new Audio(MUSICA);
+    audio.loop = true; audio.volume = 0.35; audio.preload = "auto";
+  }
+  function toggleMusica(btn) {
+    if (!audio) crearAudio();
+    if (musicaOn) { audio.pause(); musicaOn = false; btn.textContent = "♪ Música: off"; btn.classList.remove("on"); }
+    else {
+      audio.play().then(() => { musicaOn = true; btn.textContent = "♪ Música: on"; btn.classList.add("on"); })
+        .catch(() => { btn.textContent = "♪ Música no disponible"; });
+    }
+  }
+
+  // =========================================================================
   //  VISTA DOCENTE (host)
   // =========================================================================
   function initHost() {
@@ -52,6 +69,7 @@
     let sala = window.SALA_DEFECTO, idx = 0, vidas = VIDAS0;
     let timer = null, restante = TIEMPO, pausado = false;
 
+    // --- Pantalla 1: abrir sala ---
     function setup() {
       root.innerHTML = "";
       const s = el("section", "cover");
@@ -62,29 +80,98 @@
       f.appendChild(el("label", null, "Código de sala"));
       const inp = el("input", "input"); inp.value = sala; inp.maxLength = 12;
       f.appendChild(inp); s.appendChild(f);
-      const b = el("button", "btn btn-primary", "Abrir sala y proyectar"); s.appendChild(b);
-      s.appendChild(el("p", "hint", "Los estudiantes entran a la misma dirección, sin “?rol=host”."));
+      const b = el("button", "btn btn-primary", "Abrir sala"); s.appendChild(b);
+      s.appendChild(el("p", "hint", "Tras abrir la sala verás quiénes se conectan antes de empezar."));
       root.appendChild(s);
       b.onclick = () => {
         sala = (inp.value || window.SALA_DEFECTO).toUpperCase().replace(/[^A-Z0-9]/g, "");
         salaRef(sala).set({ estado: "lobby", idx: 0, total: TOTAL, revelar: false, vidas: VIDAS0,
-          comodines: { maf: false, ff: false, mg: false }, ff5050: null, oraculo: null, pausado: false,
+          comodines: { maf: false, ff: false, mg: false }, pausado: false,
           ts: firebase.database.ServerValue.TIMESTAMP });
         salaRef(sala).child("jugadores").remove();
         salaRef(sala).child("respuestas").remove();
         salaRef(sala).child("puntajes").remove();
-        juego();
+        lobby();
       };
     }
 
+    // --- Pantalla 2: LOBBY (verificar conectados + instrucciones + Comenzar) ---
+    function lobby() {
+      root.innerHTML = "";
+      const s = el("section", "lobby");
+
+      const meta = el("div", "stage-meta");
+      const mL = el("div"); mL.innerHTML = "SALA <strong>" + sala + "</strong>";
+      mL.style.fontSize = "1rem";
+      const musBtn = el("button", "btn-musica", "♪ Música: off");
+      musBtn.onclick = () => toggleMusica(musBtn);
+      meta.appendChild(mL); meta.appendChild(musBtn); s.appendChild(meta);
+
+      s.appendChild(el("p", "eyebrow", "Sala de espera"));
+      const h = el("h1", "display"); h.textContent = "Conéctense al round"; s.appendChild(h);
+
+      // Instrucción de ingreso para estudiantes
+      const ent = el("div", "lobby-entrada");
+      const urlBase = location.href.split("?")[0];
+      ent.innerHTML = "Entren desde <strong>" + urlBase + "</strong> con el código <strong>" + sala + "</strong>.";
+      s.appendChild(ent);
+
+      // Contador grande de conectados
+      const big = el("div", "conectados-big");
+      const num = el("div", "cb-num", "0");
+      const lab = el("div", "cb-lab", "conectados");
+      big.appendChild(num); big.appendChild(lab); s.appendChild(big);
+
+      // Lista de nombres
+      const lista = el("div", "lobby-lista"); s.appendChild(lista);
+
+      // Instrucciones de juego
+      const reglas = el("div", "lobby-reglas");
+      reglas.appendChild(el("p", "lr-title", "Cómo se juega"));
+      const ul = el("div", "lr-list");
+      [
+        "Cada pregunta dura 90 segundos. El curso vota desde sus celulares.",
+        "Si más de la mitad acierta, el curso avanza; si no, pierde una vida.",
+        "El curso tiene cinco vidas. Con cero, termina el round.",
+        "Hay tres comodines que activa el docente: pista de MAF, 50·50 y respuesta de MG.",
+        "Al final se reconoce a quienes más acertaron."
+      ].forEach((t) => { const r = el("div", "lr-item"); r.appendChild(el("span", "lr-dot", "—")); r.appendChild(el("span", null, t)); ul.appendChild(r); });
+      reglas.appendChild(ul); s.appendChild(reglas);
+
+      const b = el("button", "btn btn-primary", "Comenzar el round");
+      s.appendChild(b);
+      root.appendChild(s);
+
+      // Suscripción robusta a jugadores
+      const jref = salaRef(sala).child("jugadores");
+      jref.on("value", (snap) => {
+        const n = snap.numChildren();
+        num.textContent = n;
+        lab.textContent = n === 1 ? "conectado" : "conectados";
+        lista.innerHTML = "";
+        snap.forEach((c) => {
+          const v = c.val();
+          const nombre = (v && v.nombre) ? v.nombre : "—";
+          lista.appendChild(el("span", "lobby-chip", nombre));
+        });
+      });
+
+      b.onclick = () => { jref.off(); juego(); };
+    }
+
+    // --- Pantalla 3: JUEGO ---
     function juego() {
       root.innerHTML = "";
       const stage = el("section", "stage");
 
       const meta = el("div", "stage-meta");
       const mL = el("div"); mL.innerHTML = "SALA <strong>" + sala + "</strong>";
-      const mR = el("div", null, "ÚLTIMO ROUND");
-      meta.appendChild(mL); meta.appendChild(mR); stage.appendChild(meta);
+      const right = el("div", "meta-right");
+      const musBtn = el("button", "btn-musica", musicaOn ? "♪ Música: on" : "♪ Música: off");
+      if (musicaOn) musBtn.classList.add("on");
+      musBtn.onclick = () => toggleMusica(musBtn);
+      right.appendChild(musBtn);
+      meta.appendChild(mL); meta.appendChild(right); stage.appendChild(meta);
 
       const status = el("div", "status-row");
       const vidasWrap = el("div", "vidas");
@@ -101,8 +188,7 @@
       const clockNum = el("div", "clock-num", TIEMPO + "");
       const clockBar = el("div", "clock-bar"); const clockFill = el("div", "clock-fill"); clockBar.appendChild(clockFill);
       const btnPausa = el("button", "btn-pausa", "Pausar");
-      clock.appendChild(clockNum); clock.appendChild(clockBar); clock.appendChild(btnPausa);
-      stage.appendChild(clock);
+      clock.appendChild(clockNum); clock.appendChild(clockBar); clock.appendChild(btnPausa); stage.appendChild(clock);
 
       const opts = el("div", "opts"); stage.appendChild(opts);
 
@@ -136,7 +222,6 @@
       }
 
       let votosRef = null, optEls = [], cerrada = false;
-
       function detenerTimer() { clearInterval(timer); timer = null; }
       function correrTimer() {
         detenerTimer();
@@ -148,7 +233,6 @@
           if (restante <= 0) { detenerTimer(); revelar(); }
         }, 1000);
       }
-
       btnPausa.onclick = () => {
         pausado = !pausado;
         btnPausa.textContent = pausado ? "Reanudar" : "Pausar";
@@ -238,7 +322,6 @@
         salaRef(sala).update({ revelar: true, estado: "revelado" });
         optEls.forEach((o, i) => o.classList.add(i === p.correct ? "correcta" : "incorrecta"));
 
-        // Sumar puntaje individual a quienes acertaron
         const quien = stage._quien || {};
         const updates = {};
         Object.keys(quien).forEach((jid) => { if (quien[jid] === p.correct) updates[jid] = firebase.database.ServerValue.increment(1); });
@@ -264,7 +347,6 @@
         detenerTimer();
         const gano = vidas > 0;
         salaRef(sala).update({ estado: "fin", final: gano ? "win" : "lose" });
-        // Leer puntajes y nombres para el top 3
         Promise.all([ salaRef(sala).child("puntajes").get(), salaRef(sala).child("jugadores").get() ]).then(([ps, js]) => {
           const punt = ps.val() || {}; const jugs = js.val() || {};
           const tabla = Object.keys(jugs).map((id) => ({ nombre: (jugs[id] && jugs[id].nombre) || "—", pts: punt[id] || 0 }));
@@ -274,24 +356,18 @@
           root.innerHTML = "";
           const c = el("section", "endcard");
           c.appendChild(el("p", "eyebrow", "Fin del round"));
-          const h = el("h1", "display");
-          h.textContent = gano ? "El curso resistió" : "Se acabaron las vidas"; c.appendChild(h);
+          const h = el("h1", "display"); h.textContent = gano ? "El curso resistió" : "Se acabaron las vidas"; c.appendChild(h);
           c.appendChild(el("p", "lede", gano
             ? "Completaron las cuarenta preguntas con vidas en pie."
             : "El curso llegó hasta la pregunta " + (idx + 1) + " de " + TOTAL + "."));
 
-          // Resultado del curso
           const resumen = el("div", "resumen-curso");
-          const vivas = el("div", "rc-item");
-          vivas.innerHTML = "<span class='rc-num'>" + vidas + "</span><span class='rc-lab'>vidas restantes</span>";
-          const llegada = el("div", "rc-item");
-          llegada.innerHTML = "<span class='rc-num'>" + (gano ? TOTAL : idx + 1) + "/" + TOTAL + "</span><span class='rc-lab'>preguntas</span>";
-          resumen.appendChild(vivas); resumen.appendChild(llegada);
-          c.appendChild(resumen);
+          const vivas = el("div", "rc-item"); vivas.innerHTML = "<span class='rc-num'>" + vidas + "</span><span class='rc-lab'>vidas restantes</span>";
+          const llegada = el("div", "rc-item"); llegada.innerHTML = "<span class='rc-num'>" + (gano ? TOTAL : idx + 1) + "/" + TOTAL + "</span><span class='rc-lab'>preguntas</span>";
+          resumen.appendChild(vivas); resumen.appendChild(llegada); c.appendChild(resumen);
 
-          // Top 3
           if (top.length) {
-            c.appendChild(el("p", "eyebrow", "Mención del round")); 
+            c.appendChild(el("p", "eyebrow", "Mención del round"));
             const ol = el("div", "podio");
             top.forEach((t, i) => {
               const row = el("div", "podio-row");
@@ -301,6 +377,8 @@
               ol.appendChild(row);
             });
             c.appendChild(ol);
+          } else {
+            c.appendChild(el("p", "lede", "No se registraron puntajes individuales."));
           }
 
           const b = el("button", "btn btn-primary", "Reiniciar"); b.onclick = () => location.reload(); c.appendChild(b);
@@ -323,7 +401,7 @@
     document.body.prepend(topbar());
     const root = $("#app");
     let sala = (params.get("sala") || window.SALA_DEFECTO).toUpperCase(), yo = null, nombre = "";
-    let idxLocal = -1, yaResp = false, miAcierto = 0; // contador local de aciertos
+    let idxLocal = -1, yaResp = false, miAcierto = 0;
 
     function join() {
       root.innerHTML = "";
@@ -367,7 +445,7 @@
         if (st.estado === "lobby") {
           body.innerHTML = "";
           body.appendChild(el("h2", "wait-title", "Estás dentro"));
-          body.appendChild(el("p", "wait-sub", "Espera a que el docente inicie la primera pregunta."));
+          body.appendChild(el("p", "wait-sub", "Espera a que el docente comience el round."));
           const v = el("div", "p-vidas"); corazones(st.vidas != null ? st.vidas : VIDAS0, v); body.appendChild(v);
           idxLocal = -1; return;
         }
@@ -375,7 +453,6 @@
 
         const p = Q[st.idx]; if (!p) return;
         if (st.idx !== idxLocal && st.estado === "jugando") { idxLocal = st.idx; yaResp = false; pintar(p, st); }
-        if (st.pausado && body._estado && !yaResp) { /* indicar pausa suave */ }
         if (st.ff5050 && body._grid) st.ff5050.forEach((i) => body._grid.children[i] && body._grid.children[i].classList.add("eliminada"));
         if (st.oraculo) mostrarOraculo(st.oraculo);
         if (st.revelar) marcar(p, st);
@@ -399,7 +476,7 @@
         const ow = el("div", "who"); const owt = el("div", "what"); orac.appendChild(ow); orac.appendChild(owt); body.appendChild(orac);
         const estado = el("p", "p-estado", "Elige una alternativa."); body.appendChild(estado);
         const vid = el("div", "p-vidas"); corazones(st.vidas != null ? st.vidas : VIDAS0, vid); body.appendChild(vid);
-        body._grid = grid; body._estado = estado; body._orac = orac; body._ow = ow; body._owt = owt; body._vidas = vid; body._mi = null;
+        body._grid = grid; body._estado = estado; body._orac = orac; body._ow = ow; body._owt = owt; body._vidas = vid; body._mi = null; body._contado = false;
       }
       function responder(i, grid, p) {
         if (yaResp) return; if (grid.children[i].classList.contains("eliminada")) return;
@@ -416,7 +493,6 @@
           if (j === p.correct) b.classList.add("p-correcta");
           else if (b.classList.contains("elegida")) b.classList.add("p-incorrecta");
         });
-        // contar mi acierto local (una sola vez por pregunta)
         if (!body._contado) { body._contado = true; if (body._mi === p.correct) miAcierto++; }
         if (body._estado) {
           body._estado.textContent = st.pasa ? "El curso avanza (" + st.ratio + "% acertó)."
@@ -433,8 +509,6 @@
       const mL = el("div"); mL.innerHTML = "SALA <strong>" + sala + "</strong>";
       meta.appendChild(mL); meta.appendChild(el("div", null, nombre.toUpperCase())); wrap.appendChild(meta);
       const body = el("div", "player-body"); wrap.appendChild(body); root.appendChild(wrap);
-
-      // preferir el puntaje oficial de Firebase; si no, el conteo local
       salaRef(sala).child("puntajes/" + yo).get().then((s) => {
         const pts = (s.exists() && s.val() != null) ? s.val() : miAcierto;
         const respondidas = (st.final === "win") ? TOTAL : (st.idx != null ? st.idx + 1 : TOTAL);

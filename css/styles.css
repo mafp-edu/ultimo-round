@@ -214,6 +214,34 @@ h2.display{font-size:clamp(1.7rem,4vw,2.4rem); font-weight:600}
 .ms-num{font-family:var(--display); font-weight:700; font-size:3rem; line-height:1; color:var(--teal)}
 .ms-lab{font-family:var(--mono); text-transform:uppercase; letter-spacing:.1em; font-size:.7rem; color:var(--tenue)}
 
+/* ============ LOBBY (sala de espera, docente) ============ */
+.lobby{width:100%}
+.lobby h1{margin:6px 0 4px}
+.lobby-entrada{font-family:var(--body); color:var(--grafito); font-size:1.02rem; margin:8px 0 0}
+.lobby-entrada strong{color:var(--tinta)}
+.conectados-big{display:flex; align-items:baseline; gap:14px; margin:24px 0 6px;
+  border-top:1px solid var(--linea); border-bottom:1px solid var(--linea); padding:18px 0}
+.cb-num{font-family:var(--display); font-weight:700; font-size:3.4rem; line-height:1; color:var(--tinta)}
+.cb-lab{font-family:var(--mono); text-transform:uppercase; letter-spacing:.12em; font-size:.72rem; color:var(--tenue)}
+.lobby-lista{display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 4px; min-height:24px}
+.lobby-chip{font-family:var(--body); font-size:.95rem; color:var(--tinta);
+  background:var(--marfil2); border:1px solid var(--linea); padding:5px 12px}
+.lobby-reglas{margin:22px 0; border-top:1px solid var(--linea); padding-top:18px}
+.lr-title{font-family:var(--mono); text-transform:uppercase; letter-spacing:.14em;
+  font-size:.7rem; color:var(--teal); margin-bottom:12px}
+.lr-list{display:flex; flex-direction:column; gap:9px}
+.lr-item{display:flex; gap:12px; align-items:baseline; font-family:var(--body);
+  font-size:1.02rem; color:var(--grafito); line-height:1.4}
+.lr-dot{color:var(--teal); font-weight:600}
+
+/* botón de música (proyector) */
+.meta-right{display:flex; gap:10px; align-items:center}
+.btn-musica{font-family:var(--mono); text-transform:uppercase; letter-spacing:.1em;
+  font-size:.64rem; padding:7px 12px; border:1px solid var(--linea); background:var(--marfil);
+  color:var(--grafito); cursor:pointer; transition:background .15s,border-color .15s,color .15s}
+.btn-musica:hover{background:var(--marfil2); border-color:var(--grafito); color:var(--tinta)}
+.btn-musica.on{background:var(--teal); border-color:var(--teal); color:var(--marfil)}
+
 /* ============ VISTA ESTUDIANTE ============ */
 .player .stage-meta{margin-bottom:18px}
 .wait-title{font-family:var(--display); font-weight:600; font-size:1.9rem; margin-bottom:6px}

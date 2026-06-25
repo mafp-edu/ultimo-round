@@ -17,3 +17,4 @@ window.SALA_DEFECTO  = "IPPC2026";   // código de sala por defecto
 window.TIEMPO_PREGUNTA = 90;          // segundos por pregunta
 window.UMBRAL        = 0.5;           // umbral de aprobación (debe superarse)
 window.VIDAS_INICIO  = 5;             // vidas del curso (0 = fin del juego)
+window.MUSICA_URL    = "assets/musica.mp3"; // música de fondo del proyector (sube tu MP3 a esta ruta)
