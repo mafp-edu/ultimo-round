@@ -85,7 +85,18 @@
   function sonar(tipo) {
     const a = tipo === "ok" ? sfxOk : sfxNo;
     if (!a) return;
+    // Si la música de fondo está sonando, bajarla para escuchar el efecto
+    const musicaEstaba = musicaOn && audio && !audio.paused;
+    if (musicaEstaba) { try { audio.pause(); } catch (e) {} }
     try { a.currentTime = 0; a.play().catch(() => {}); } catch (e) {}
+    // Reanudar la música cuando termine el efecto (o tras 4 s de respaldo)
+    if (musicaEstaba) {
+      const reanudar = () => { try { audio.play().catch(() => {}); } catch (e) {} };
+      let hecho = false;
+      const once = () => { if (hecho) return; hecho = true; reanudar(); };
+      try { a.addEventListener("ended", once, { once: true }); } catch (e) {}
+      setTimeout(once, 4000);
+    }
   }
 
   // =========================================================================
@@ -259,11 +270,13 @@
       function detenerTimer() { clearInterval(timer); timer = null; }
       function correrTimer() {
         detenerTimer();
+        salaRef(sala).update({ clk: restante });
         timer = setInterval(() => {
           if (pausado) return;
           restante--; clockNum.textContent = Math.max(restante, 0);
           clockFill.style.width = Math.max(restante / TIEMPO * 100, 0) + "%";
           if (restante <= 10) clock.classList.add("low"); else clock.classList.remove("low");
+          salaRef(sala).update({ clk: Math.max(restante, 0) });
           if (restante <= 0) { detenerTimer(); revelar(); }
         }, 1000);
       }
@@ -491,6 +504,7 @@
 
         const p = Q[st.idx]; if (!p) return;
         if (st.idx !== idxLocal && st.estado === "jugando") { idxLocal = st.idx; yaResp = false; pintar(p, st); }
+        else if (body._pclock) actualizarEstado(st);
         if (st.ff5050 && body._grid) st.ff5050.forEach((i) => body._grid.children[i] && body._grid.children[i].classList.add("eliminada"));
         if (st.oraculo) mostrarOraculo(st.oraculo);
         if (st.revelar) marcar(p, st);
@@ -499,6 +513,11 @@
 
       function pintar(p, st) {
         body.innerHTML = "";
+        // Barra de estado del estudiante: timer + comodines restantes
+        const pstat = el("div", "p-stat");
+        const pclock = el("div", "p-clock", "—");
+        const pcom = el("div", "p-com", "Comodines: 3");
+        pstat.appendChild(pclock); pstat.appendChild(pcom); body.appendChild(pstat);
         body.appendChild(el("div", "p-kicker", "Pregunta " + (st.idx + 1) + " de " + TOTAL + " · Cap. " + p.cap));
         body.appendChild(el("h2", "p-text", p.q));
         const grid = el("div", "p-opts");
@@ -515,6 +534,23 @@
         const estado = el("p", "p-estado", "Elige una alternativa."); body.appendChild(estado);
         const vid = el("div", "p-vidas"); corazones(st.vidas != null ? st.vidas : VIDAS0, vid); body.appendChild(vid);
         body._grid = grid; body._estado = estado; body._orac = orac; body._ow = ow; body._owt = owt; body._vidas = vid; body._mi = null; body._contado = false;
+        body._pclock = pclock; body._pcom = pcom;
+        actualizarEstado(st);
+      }
+      function actualizarEstado(st) {
+        if (body._pclock) {
+          const s = (st.clk != null) ? st.clk : null;
+          if (st.revelar) { body._pclock.textContent = "Tiempo"; body._pclock.classList.remove("low"); }
+          else if (s != null) {
+            body._pclock.textContent = s + " s";
+            body._pclock.classList.toggle("low", s <= 10);
+          }
+        }
+        if (body._pcom) {
+          const c = st.comodines || {};
+          const usados = (c.maf ? 1 : 0) + (c.ff ? 1 : 0) + (c.mg ? 1 : 0);
+          body._pcom.textContent = "Comodines: " + (3 - usados);
+        }
       }
       function responder(i, grid, p) {
         if (yaResp) return; if (grid.children[i].classList.contains("eliminada")) return;
