@@ -18,6 +18,8 @@
   const UMBRAL = window.UMBRAL || 0.5;
   const VIDAS0 = window.VIDAS_INICIO || 5;
   const MUSICA = window.MUSICA_URL || "assets/musica.mp3";
+  const SFX_OK = window.SFX_CORRECTO_URL || "assets/correcto.mp3";
+  const SFX_NO = window.SFX_INCORRECTO_URL || "assets/incorrecto.mp3";
 
   const $ = (s) => document.querySelector(s);
   const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
@@ -49,15 +51,41 @@
   let audio = null, musicaOn = false;
   function crearAudio() {
     audio = new Audio(MUSICA);
-    audio.loop = true; audio.volume = 0.35; audio.preload = "auto";
+    audio.loop = true; audio.volume = 0.6; audio.muted = false; audio.preload = "auto";
+    audio.addEventListener("error", () => {
+      console.error("Música: no se pudo cargar el archivo en", MUSICA, "— verifica que assets/musica.mp3 exista y sea un MP3 válido.");
+    });
   }
   function toggleMusica(btn) {
     if (!audio) crearAudio();
-    if (musicaOn) { audio.pause(); musicaOn = false; btn.textContent = "♪ Música: off"; btn.classList.remove("on"); }
-    else {
-      audio.play().then(() => { musicaOn = true; btn.textContent = "♪ Música: on"; btn.classList.add("on"); })
-        .catch(() => { btn.textContent = "♪ Música no disponible"; });
-    }
+    if (musicaOn) { audio.pause(); musicaOn = false; btn.textContent = "♪ Música: off"; btn.classList.remove("on"); return; }
+    audio.muted = false; audio.volume = 0.6;
+    // Intentar reproducir; si falla, recargar el archivo y reintentar una vez
+    audio.play().then(() => {
+      musicaOn = true; btn.textContent = "♪ Música: on"; btn.classList.add("on");
+    }).catch((err) => {
+      console.warn("Música: primer intento falló:", err && err.message);
+      try { audio.load(); } catch (e) {}
+      audio.play().then(() => {
+        musicaOn = true; btn.textContent = "♪ Música: on"; btn.classList.add("on");
+      }).catch((err2) => {
+        console.error("Música: segundo intento falló:", err2 && err2.message);
+        btn.textContent = "♪ Música no disponible";
+      });
+    });
+  }
+
+  // Efectos de sonido (correcto / incorrecto) — solo en el proyector.
+  // Se precargan al abrir la sala para que disparen sin demora al revelar.
+  let sfxOk = null, sfxNo = null;
+  function precargarSfx() {
+    try { sfxOk = new Audio(SFX_OK); sfxOk.preload = "auto"; sfxOk.volume = 0.8; } catch (e) {}
+    try { sfxNo = new Audio(SFX_NO); sfxNo.preload = "auto"; sfxNo.volume = 0.8; } catch (e) {}
+  }
+  function sonar(tipo) {
+    const a = tipo === "ok" ? sfxOk : sfxNo;
+    if (!a) return;
+    try { a.currentTime = 0; a.play().catch(() => {}); } catch (e) {}
   }
 
   // =========================================================================
@@ -91,6 +119,7 @@
         salaRef(sala).child("jugadores").remove();
         salaRef(sala).child("respuestas").remove();
         salaRef(sala).child("puntajes").remove();
+        precargarSfx();
         lobby();
       };
     }
@@ -131,7 +160,7 @@
       const ul = el("div", "lr-list");
       [
         "Cada pregunta dura 90 segundos. El curso vota desde sus celulares.",
-        "Si más de la mitad acierta, el curso avanza; si no, pierde una vida.",
+        "Si más del 60% acierta, el curso avanza; si no, pierde una vida.",
         "El curso tiene cinco vidas. Con cero, termina el round.",
         "Hay tres comodines que activa el docente: pista de MAF, 50·50 y respuesta de MG.",
         "Al final se reconoce a quienes más acertaron."
@@ -177,7 +206,11 @@
       const vidasWrap = el("div", "vidas");
       vidasWrap.appendChild(el("span", "vidas-label", "Vidas"));
       const hearts = el("div", "vidas-hearts"); vidasWrap.appendChild(hearts);
-      const jug = el("div", "jugcount", "0 conectados");
+      const jug = el("div", "jugcount");
+      const jugCon = el("span", "jc-con", "0 conectados");
+      const jugSep = el("span", "jc-sep", " · ");
+      const jugResp = el("span", "jc-resp", "0 respondieron");
+      jug.appendChild(jugCon); jug.appendChild(jugSep); jug.appendChild(jugResp);
       status.appendChild(vidasWrap); status.appendChild(jug); stage.appendChild(status);
 
       const escalera = el("div", "escalera"); stage.appendChild(escalera);
@@ -212,7 +245,8 @@
       corazones(vidas, hearts);
 
       salaRef(sala).child("jugadores").on("value", (s) => {
-        const n = s.numChildren(); jug.textContent = n + (n === 1 ? " conectado" : " conectados");
+        const n = s.numChildren(); stage._conectados = n;
+        jugCon.textContent = n + (n === 1 ? " conectado" : " conectados");
       });
 
       function pintarEscalera() {
@@ -272,6 +306,7 @@
 
         salaRef(sala).update({ estado: "jugando", idx: idx, revelar: false, oraculo: null, ff5050: null, pausado: false });
         salaRef(sala).child("respuestas").remove();
+        jugResp.textContent = "0 respondieron";
 
         if (votosRef) votosRef.off();
         votosRef = salaRef(sala).child("respuestas");
@@ -282,6 +317,8 @@
             const pc = tot ? Math.round(c[i] / tot * 100) : 0;
             o._fill.style.width = pc + "%"; o._pct.textContent = tot ? pc + "%" : "";
           });
+          const con = stage._conectados || 0;
+          jugResp.textContent = tot + (con ? " de " + con : "") + " respondieron";
           stage._c = c; stage._tot = tot; stage._quien = quien;
         });
 
@@ -328,7 +365,8 @@
         if (Object.keys(updates).length) salaRef(sala).child("puntajes").update(updates);
 
         const c = stage._c || [0,0,0,0]; const tot = stage._tot || 0;
-        const ac = c[p.correct] || 0; const ratio = tot ? ac / tot : 0; const pasa = ratio > UMBRAL;
+        const ac = c[p.correct] || 0; const ratio = tot ? ac / tot : 0; const pasa = ratio >= UMBRAL;
+        if (tot) sonar(pasa ? "ok" : "no");
         if (tot && !pasa) { vidas = Math.max(0, vidas - 1); salaRef(sala).update({ vidas: vidas }); corazones(vidas, hearts); }
         salaRef(sala).update({ pasa: pasa, ratio: Math.round(ratio*100) });
         veredicto.textContent = tot
@@ -408,7 +446,7 @@
       const s = el("section", "cover");
       s.appendChild(el("p", "eyebrow", "Repaso en vivo"));
       const h = el("h1", "display"); h.innerHTML = "Únete al <em class='round-word'>round</em>"; s.appendChild(h);
-      s.appendChild(el("p", "lede", "Cada pregunta se decide entre todos: si más de la mitad acierta, el curso avanza."));
+      s.appendChild(el("p", "lede", "Cada pregunta se decide entre todos: si más del 60% acierta, el curso avanza."));
       const f1 = el("div", "field"); f1.appendChild(el("label", null, "Tu nombre"));
       const inN = el("input", "input"); inN.placeholder = "Nombre y apellido"; inN.maxLength = 30; f1.appendChild(inN); s.appendChild(f1);
       const f2 = el("div", "field"); f2.appendChild(el("label", null, "Código de sala"));
@@ -496,7 +534,7 @@
         if (!body._contado) { body._contado = true; if (body._mi === p.correct) miAcierto++; }
         if (body._estado) {
           body._estado.textContent = st.pasa ? "El curso avanza (" + st.ratio + "% acertó)."
-            : "El curso no superó el 50% (" + st.ratio + "% acertó). Pierde una vida.";
+            : "El curso no superó el 60% (" + st.ratio + "% acertó). Pierde una vida.";
           body._estado.className = "p-estado " + (st.pasa ? "ok" : "no");
         }
       }
