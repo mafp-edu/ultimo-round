@@ -13,8 +13,10 @@ window.FIREBASE_CONFIG = {
   appId: "1:993302080441:web:52bb14bd345fbaf62be468"
 };
 
-window.SALA_DEFECTO  = "IPPC2026";   // código de sala por defecto
-window.TIEMPO_PREGUNTA = 90;          // segundos por pregunta
-window.UMBRAL        = 0.5;           // umbral de aprobación (debe superarse)
-window.VIDAS_INICIO  = 5;             // vidas del curso (0 = fin del juego)
-window.MUSICA_URL    = "assets/musica.mp3"; // música de fondo del proyector (sube tu MP3 a esta ruta)
+window.SALA_DEFECTO    = "IPPC2026";          // código de sala por defecto
+window.TIEMPO_PREGUNTA = 90;                   // segundos por pregunta
+window.UMBRAL          = 0.6;                  // umbral de aprobación (debe superarse: >60%)
+window.VIDAS_INICIO    = 5;                    // vidas del curso (0 = fin del juego)
+window.MUSICA_URL      = "assets/musica.mp3";  // música de fondo del proyector
+window.SFX_CORRECTO_URL   = "assets/correcto.mp3";   // efecto al revelar: el curso acertó
+window.SFX_INCORRECTO_URL = "assets/incorrecto.mp3"; // efecto al revelar: el curso falló
